@@ -1,0 +1,150 @@
+import os
+import sys
+import torch.nn as nn
+import torch
+import torch.nn.functional as F
+
+sys.path.append("../transformer_captioning")
+
+from transformer import (
+    AttentionLayer,
+    MultiHeadAttentionLayer,
+    PositionalEncoding,
+    SelfAttentionBlock,
+    CrossAttentionBlock,
+    FeedForwardBlock
+)
+
+class EncoderLayer(nn.Module):
+    def __init__(self, d_model, num_heads, d_ff=2048, dropout=0.1):
+        super().__init__()
+        self.self_attention = SelfAttentionBlock(d_model, num_heads, dropout=dropout)
+        self.feed_forward = FeedForwardBlock(d_model, num_heads, d_ff, dropout=dropout)
+
+    def forward(self, seq, mask):
+        x = self.self_attention(seq, mask)
+        x = self.feed_forward(x)
+
+        return x
+
+class ViT(nn.Module):
+    """
+        - A ViT takes an image as input, divides it into patches, and then feeds the patches through a transformer to output a sequence of patch embeddings. 
+        - To perform classification with a ViT we patchify the image, embed each patch using an embedding layer and add a learnable [CLS] token to the beginning of the sequence.
+        - The output embedding corresponding to the [CLS] token is then fed through a linear layer to obtain the logits for each class.
+    """
+
+    def __init__(self, patch_dim, d_model, d_ff, num_heads, num_layers, num_patches, num_classes, device='cuda'):
+        """
+            Construct a new ViT instance.
+            Inputs
+            - patch_dim: the dimension of each patch
+            - d_model: the dimension of the input to the transformer blocks
+            - d_ff: the dimension of the intermediate layer in the feed forward block 
+            - num_heads: the number of heads in the multi head attention layer
+            - num_layers: the number of transformer blocks
+            - num_patches: the number of patches in the image
+        """
+
+        super().__init__()
+
+        self.patch_dim = patch_dim
+        self.d_model = d_model
+        self.d_ff = d_ff
+        self.num_heads = num_heads
+        self.num_layers = num_layers
+        self.num_patches = num_patches
+        self.num_classes = num_classes
+        self.device = device
+
+        self.patch_embedding = nn.Linear(patch_dim * patch_dim * 3, d_model)  # TODO (Linear Layer that takes as input a patch and outputs a d_model dimensional vector)
+        self.positional_encoding = PositionalEncoding(d_model)  # TODO (use the positional encoding from the transformer captioning solution)
+        self.fc = nn.Linear(d_model, num_classes)  # TODO (takes as input the embedding corresponding to the [CLS] token and outputs the logits for each class)
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))  # TODO (learnable [CLS] token embedding)
+
+        self.layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff) for _ in range(num_layers)])
+
+        self.apply(self._init_weights)
+        self.device = device 
+        self.to(device)
+
+    def patchify(self, images: torch.tensor):
+        """
+            Given a batch of images, divide each image into patches and flatten each patch into a vector.
+            Inputs:
+                - images: a FloatTensor of shape (N, 3, H, W) giving a minibatch of images
+            Returns:
+                - patches: a FloatTensor of shape (N, num_patches, patch_dim x patch_dim x 3) giving a minibatch of patches    
+        """
+
+        # TODO - Break images into a grid of patches
+        # Feel free to use pytorch built-in functions to do this
+        # N, _, H, W = images.shape
+        # patch_len = self.patch_dim  # hyperparameter
+        #
+        # num_pad_h = (patch_len - H % patch_len) % patch_len
+        # num_pad_w = (patch_len - W % patch_len) % patch_len
+        #
+        # images = F.pad(images, (0, num_pad_h, 0, num_pad_w))
+        #
+        # images = F.unfold(images, (patch_len, patch_len)).permute(0, 2, 1)
+        # # print(f"Patchify output shape: {images.shape}")
+        # """
+        #     Tensor: N, patch_len * patch_len * C, num_patches
+        # """
+        # self.num_patches = images.shape[1]
+        #
+        # return images
+        N, C, H, W = images.shape
+        patch_size = self.patch_dim
+        patches = images.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
+        patches = patches.contiguous().view(N, C, -1, patch_size, patch_size)
+        patches = patches.permute(0, 2, 3, 4, 1).contiguous().view(N, self.num_patches, -1)
+        return patches
+
+    def forward(self, images):
+        """
+            Given a batch of images, compute the logits for each class. 
+            Inputs:
+                - images: a FloatTensor of shape (N, 3, H, W) giving a minibatch of images
+            Returns:
+                - logits: a FloatTensor of shape (N, C) giving the logits for each class
+        """
+        
+        patches = self.patchify(images)
+        patches_embedded = self.patch_embedding(patches)
+
+        cls_expanded = self.cls_token.expand(images.shape[0], -1, -1)
+
+        # print(patches_embedded.shape, cls_expanded.shape)
+        output = torch.cat((cls_expanded, patches_embedded), dim=1)  # TODO (append a CLS token to the beginning of the sequence of patch embeddings)
+
+        # print(output.shape)
+        pos = self.positional_encoding(output)
+        output = output + pos
+
+        mask = torch.ones((images.shape[0], self.num_patches+1, self.num_patches+1), device=self.device)
+
+        for layer in self.layers:
+            output = layer(output, mask)
+
+        output = self.fc(output[:, 0, :])  # TODO (take the embedding corresponding to the [CLS] token and feed it through a linear layer to obtain the logits for each class)
+
+        return output
+
+    def _init_weights(self, module):
+        """
+        Initialize the weights of the network.
+        """
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            module.weight.data.normal_(mean=0.0, std=0.02)
+            if isinstance(module, nn.Linear) and module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+
+
+
+
+
