@@ -42,8 +42,10 @@ class AttentionLayer(nn.Module):
             # convert att_mask which is multiplicative, to an additive mask
             # Hint : If mask[i,j] = 0, we want softmax(QKT[i,j] + additive_mask[i,j]) to be 0
             # Think about what inputs make softmax 0.
+            
             # additive_mask = attn_mask.masked_fill(attn_mask == 0, float('-inf'))
             # dot_product += additive_mask
+            
             additive_mask = (attn_mask - 1) * 1e10
             dot_product += additive_mask
 
@@ -89,10 +91,12 @@ class MultiHeadAttentionLayer(AttentionLayer):
             # Think about what inputs make softmax 0.
             # print(attn_mask.shape)
             # additive_mask = attn_mask.unsqueeze(1).transpose(0, 1).repeat(1, H, 1, 1)
+            
             # # additive_mask = additive_mask.masked_fill(additive_mask == 0, float('-inf'))
             # additive_mask = additive_mask.masked_fill(additive_mask == 0, float('-inf'))  # no mask
             # # print(dot_product.shape, additive_mask.shape)
             # dot_product += additive_mask
+            
             additive_mask = (attn_mask - 1) * 1e10
             dot_product += additive_mask
 
