@@ -1,5 +1,5 @@
 # README
-This is the **project C** of *2024 Pittsburgh Summer Visit Program*, which is about transformer tasks like captioning and classification.To run this project, you can directly install pytorch and some other simple dependencies since there are not so many packages used.
+This is the **project C** of *2024 Pittsburgh Summer Visit Program*, which is about transformer tasks like *captioning* and *classification*. To run this project, you can directly install pytorch and some other simple dependencies since there are not so many packages used.
 
 Due to the small scale of training set, the model performs humorously bad on valid sets in captioning, and gains 0.66 accuracy in classification tasks. This is more a example than an appliable model (After all, it's no more than a final project of a summer camp).
 
